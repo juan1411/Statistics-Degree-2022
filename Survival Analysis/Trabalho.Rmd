@@ -1,0 +1,1029 @@
+---
+title: "SME0821 - Análise de Sobrevivência e Confiabilidade"
+output: pdf_document
+---
+
+### Nome: Juan Lucas Montanaro, nºUSP: 11912787
+### 19 de Julho de 2022
+
+# Trabalho Final
+
+## Sumário
+*  Análise Descritiva dos Dados
+   * Covariável Idade
+   * Covariável Diagnóstico
+   * Covariável Classe Funcional
+   * Covariável Ritmo Cardíaco
+   * Covariáveis Binárias
+   * Resumo da Análise Descritiva
+*  Modelagem Paramétrica
+   * Escolha do Melhor Modelo
+   * Análise dos Resíduos
+*  Modelagem Semi-Paramétrica
+   * Escolha do Melhor Modelo
+   * Análise dos Resíduos
+
+
+A partir do arquivo disponibilizado pelo professor, serão construídos dois modelos de regressão para o tempo até o óbito dos pacientes que passaram pelos tratamentos para insuficiência cardíaca durante o período de julho de 2003 à fevereiro de 2009 no Instituto do Coração (INCOR). Entretanto, o objetivo principal é identificar quais são os fatores prognósticos importantes para a sobrevida dos pacientes.
+
+```{r Ambiente, include=FALSE}
+setwd("C:/Juan - Usp/5º Semestre/Analise Sobrevivencia/Ativ 4")
+rm(list=ls(all=TRUE))
+```
+
+## a) Análise Descritiva dos Dados
+
+Primeiramente, é necessário carregar as bibliotecas essenciais para uma análise de sobrevivência e carregar os dados:
+
+```{r Carregando, warning=FALSE, message=FALSE}
+library(survival)
+library(survminer)
+library(flexsurv)
+library(dplyr)
+library(gridExtra)
+
+# Carregando os Dados:
+df <- read.csv2("InsufCardiaca.csv")
+```
+
+```{r tratamento1, include=FALSE}
+df$tempo <- as.double(df$tempo)
+df$imc <- as.double(df$imc)
+df$hb <- as.double(df$hb)
+df <- df[, c(1,2,3,4,7,8,11,12,13,14,15,  5,6,9,10)]
+df <- df[df$diag != 6, ]
+df$Idade <- as.factor(df$Idade)
+df$sexo <- as.factor(df$sexo)
+df$diag <- as.factor(df$diag)
+df$class <- as.factor(df$class)
+df$frac <- as.factor(df$frac)
+df$ritmo <- as.factor(df$ritmo)
+df$droga1 <- as.factor(df$droga1)
+df$droga2 <- as.factor(df$droga2)
+df$droga3 <- as.factor(df$droga3)
+```
+
+Então começamos a análise observando a curva de sobrevivência geral de Kaplan-Meier, a qual mostra que mesmo após 67 meses a taxa de sobreviventes é razoavelmente alta (aproximadamente 60%).
+
+```{r KMgeral, fig.align='center'}
+ekm <- survfit(Surv(tempo, censura)~1, data=df)
+
+ggsurvplot(ekm, data = df, break.time.by= 6,
+           title='Kaplan-Meier para os Dados',
+           xlab='Tempo (meses)', ylab='S(t)',
+           palette='#990000', risk.table=T,
+           legend.title='Dados'
+)
+```
+
+Então, a seguir a análise específica de cada covariável, começando com a idade dos pacientes.
+
+### Covariável Idade
+
+```{r Idade, fig.align='center'}
+ekm_id  <- survfit(Surv(tempo, censura)~Idade, data=df)
+
+ggsurvplot(ekm_id, data = df, break.time.by= 6,
+           title='Kaplan-Meier para Idade',
+           xlab='Tempo (meses)', ylab='S(t)',
+           legend.title='Idades',
+           legend.labs=c('0:[18;35)','1:[35;45)','2:[45;55)',
+                         '3:[55;65];','4: >65 anos')
+)
+```
+
+Vê-se que algumas curvas são similares e outras parecem diferentes, mas é difícil comparar todas de uma vez, vejamos a comparação das curvas duas a duas.
+
+```{r, include=FALSE}
+ekm_id01 <- survfit(Surv(tempo, censura)~Idade,
+                    data=df, subset=(Idade==0 | Idade==1))
+ekm_id02 <- survfit(Surv(tempo, censura)~Idade,
+                    data=df, subset=(Idade==0 | Idade==2))
+ekm_id03 <- survfit(Surv(tempo, censura)~Idade,
+                    data=df, subset=(Idade==0 | Idade==3))
+ekm_id04 <- survfit(Surv(tempo, censura)~Idade,
+                    data=df, subset=(Idade==0 | Idade==4))
+ekm_id12 <- survfit(Surv(tempo, censura)~Idade,
+                    data=df, subset=(Idade==1 | Idade==2))
+ekm_id13 <- survfit(Surv(tempo, censura)~Idade,
+                    data=df, subset=(Idade==1 | Idade==3))
+ekm_id14 <- survfit(Surv(tempo, censura)~Idade,
+                    data=df, subset=(Idade==1 | Idade==4))
+ekm_id23 <- survfit(Surv(tempo, censura)~Idade,
+                    data=df, subset=(Idade==2 | Idade==3))
+ekm_id24 <- survfit(Surv(tempo, censura)~Idade,
+                    data=df, subset=(Idade==2 | Idade==4))
+ekm_id34 <- survfit(Surv(tempo, censura)~Idade,
+                    data=df, subset=(Idade==3 | Idade==4))
+```
+
+```{r idade2a2, fig.align='center'}
+par(mfrow=c(3,4), mar=c(2,2,2,2))
+plot(ekm_id, main='Idades')
+plot(ekm_id01, main='0-1')
+plot(ekm_id02, main='0-2')
+plot(ekm_id03, main='0-3')
+plot(ekm_id04, main='0-4')
+plot(ekm_id12, main='1-2')
+plot(ekm_id13, main='1-3')
+plot(ekm_id14, main='1-4')
+plot(ekm_id23, main='2-3')
+plot(ekm_id24, main='2-4')
+plot(ekm_id34, main='3-4')
+```
+
+```{r idadepair}
+pairwise_survdiff(Surv(tempo, censura)~Idade, df, rho=1)
+```
+
+Pelos gráficos, vemos que não pode-se considerar o teste de Wilcoxon para as comparações: "0 vs 4", "1 vs 3" e "2 vs 3", pois há muitos cruzamentos, mas as estas curvas parecem de fato similares. E, a partir do teste, concluí-se que as curvas 0,1,2 e 3 são todas similares entre si (definido o nível de 25% de significância) e todas diferentes da curva 4.
+
+### Covariável Diagnóstico
+
+```{r diag, fig.align='center'}
+ekm_dig <- survfit(Surv(tempo, censura)~diag, data=df)
+
+ggsurvplot(ekm_dig, data = df, break.time.by= 6,
+           title='Kaplan-Meier para o Diagnóstico de Etiologia',
+           xlab='Tempo (meses)', ylab='S(t)',
+           legend.title='Diagnóstico',
+           legend.labs=c('1:Chagas','2:Hipert.','3:Miocard.',
+                         '4:Não Espec.','5:Outras')
+)
+```
+
+```{r, include=FALSE}
+ekm_dig12 <- survfit(Surv(tempo, censura)~diag,
+                    data=df, subset=(diag==1 | diag==2))
+ekm_dig13 <- survfit(Surv(tempo, censura)~diag,
+                    data=df, subset=(diag==1 | diag==3))
+ekm_dig14 <- survfit(Surv(tempo, censura)~diag,
+                    data=df, subset=(diag==1 | diag==4))
+ekm_dig15 <- survfit(Surv(tempo, censura)~diag,
+                    data=df, subset=(diag==1 | diag==5))
+ekm_dig23 <- survfit(Surv(tempo, censura)~diag,
+                    data=df, subset=(diag==2 | diag==3))
+ekm_dig24 <- survfit(Surv(tempo, censura)~diag,
+                    data=df, subset=(diag==2 | diag==4))
+ekm_dig25 <- survfit(Surv(tempo, censura)~diag,
+                    data=df, subset=(diag==2 | diag==5))
+ekm_dig34 <- survfit(Surv(tempo, censura)~diag,
+                    data=df, subset=(diag==3 | diag==4))
+ekm_dig35 <- survfit(Surv(tempo, censura)~diag,
+                    data=df, subset=(diag==3 | diag==5))
+ekm_dig45 <- survfit(Surv(tempo, censura)~diag,
+                    data=df, subset=(diag==4 | diag==5))
+```
+
+```{r diag2a2, fig.align='center'}
+par(mfrow=c(3,4), mar=c(2,2,2,2))
+plot(ekm_dig, main='Diagnostico')
+plot(ekm_dig12, main='1-2')
+plot(ekm_dig13, main='1-3')
+plot(ekm_dig14, main='1-4')
+plot(ekm_dig15, main='1-5')
+plot(ekm_dig23, main='2-3')
+plot(ekm_dig24, main='2-4')
+plot(ekm_dig25, main='2-5')
+plot(ekm_dig34, main='3-4')
+plot(ekm_dig35, main='3-5')
+plot(ekm_dig45, main='4-5')
+```
+
+```{r diagpair}
+pairwise_survdiff(Surv(tempo, censura)~diag, data=df, rho=1)
+```
+
+Dessa vez, não pode-se considerar o teste para as curvas: "1 vs 2", "1 vs 4" e "2 vs 4" por conta dos cruzamentos, mas elas parecem próximas. E, segundo o teste, as curvas "1 e 3", "2 e 3", "2 e 5" e "3 e 4" são de fato diferentes, e por mais que o p-valor de "1 e 5" seja maior que 25% irei considerar que elas são também diferentes, ademais, "3 e 5" e "4 e 5" são similares.
+
+### Covariável Classe Funcional
+
+Para esta covariável, considere a seguinte codificação: "1 - Sem Sintomas(SS)", "2 - Limitado em Grandes Esforços (LGE)", "3 - Limitado em Esforços Moderados(LEM)", "4 - Limitado em Repouso(LR)" e "9 - Não Avaliado(NA)". Esta covariável diz respeito às capacidades de um indivíduo de fazer exercícios.
+
+```{r class, fig.align='center'}
+ekm_cls <- survfit(Surv(tempo, censura)~class, data=df)
+ggsurvplot(ekm_cls, data = df, break.time.by= 6,
+           title='Kaplan-Meier para Classe Funcional',
+           xlab='Tempo (meses)', ylab='S(t)',
+           legend.title='Avaliação',
+           legend.labs=c('1:SS','2:LGE','3:LEM','4:LR','9:NA')
+)
+```
+
+```{r, include=FALSE}
+ekm_cls12 <- survfit(Surv(tempo, censura)~class,
+                    data=df, subset=(class==1 | class==2))
+ekm_cls13 <- survfit(Surv(tempo, censura)~class,
+                    data=df, subset=(class==1 | class==3))
+ekm_cls14 <- survfit(Surv(tempo, censura)~class,
+                    data=df, subset=(class==1 | class==4))
+ekm_cls19 <- survfit(Surv(tempo, censura)~class,
+                    data=df, subset=(class==1 | class==9))
+ekm_cls23 <- survfit(Surv(tempo, censura)~class,
+                    data=df, subset=(class==2 | class==3))
+ekm_cls24 <- survfit(Surv(tempo, censura)~class,
+                    data=df, subset=(class==2 | class==4))
+ekm_cls29 <- survfit(Surv(tempo, censura)~class,
+                    data=df, subset=(class==2 | class==9))
+ekm_cls34 <- survfit(Surv(tempo, censura)~class,
+                    data=df, subset=(class==3 | class==4))
+ekm_cls39 <- survfit(Surv(tempo, censura)~class,
+                    data=df, subset=(class==3 | class==9))
+ekm_cls49 <- survfit(Surv(tempo, censura)~class,
+                    data=df, subset=(class==4 | class==9))
+```
+
+```{r class2a2, fig.align='center'}
+par(mfrow=c(3,4), mar=c(2,2,2,2))
+plot(ekm_cls, main='Classe')
+plot(ekm_cls12, main='1-2')
+plot(ekm_cls13, main='1-3')
+plot(ekm_cls14, main='1-4')
+plot(ekm_cls19, main='1-9')
+plot(ekm_cls23, main='2-3')
+plot(ekm_cls24, main='2-4')
+plot(ekm_cls29, main='2-9')
+plot(ekm_cls34, main='3-4')
+plot(ekm_cls39, main='3-9')
+plot(ekm_cls49, main='4-9')
+```
+
+Agora, não devemos considerar os testes para as curvas: "1 vs 2", "3 vs 4" e "4 vs 9", novamente, porque se cruzam, mas "1 e 2" e "3 e 4" parecem próximas enquanto "4 e 9" parecem serem curvas diferentes.
+
+```{r classpair1}
+pairwise_survdiff(Surv(tempo, censura)~class, data=df, rho=0)
+```
+
+Pelo teste logrank acima, as curvas: "1 vs 9", "2 vs 3", "2 vs 4" e "2 vs 9" parecem serem diferentes.
+
+```{r classpair2}
+pairwise_survdiff(Surv(tempo, censura)~class, data=df, rho=1)
+```
+
+E, pelo teste de Wilcoxon, todas as comparações cabíveis indicam que as curvas são diferentes.
+
+### Covariável Ritmo Cardíaco
+
+```{r ritmo, fig.align='center'}
+ekm_rit <- survfit(Surv(tempo, censura)~ritmo, data=df)
+ggsurvplot(ekm_rit, data = df, break.time.by= 6,
+           title='Kaplan-Meier para o Ritmo Cardíaco',
+           xlab='Tempo (meses)', ylab='S(t)',
+           legend.title='Classificação',
+           legend.labs=c('1:Sinusal','2:Fluter',
+                         '3:Outros','4:Dados Faltantes')
+)
+```
+
+```{r, include=FALSE}
+ekm_rit12 <- survfit(Surv(tempo, censura)~ritmo,
+                    data=df, subset=(ritmo==1 | ritmo==2))
+ekm_rit13 <- survfit(Surv(tempo, censura)~ritmo,
+                    data=df, subset=(ritmo==1 | ritmo==3))
+ekm_rit14 <- survfit(Surv(tempo, censura)~ritmo,
+                    data=df, subset=(ritmo==1 | ritmo==4))
+ekm_rit23 <- survfit(Surv(tempo, censura)~ritmo,
+                    data=df, subset=(ritmo==2 | ritmo==3))
+ekm_rit24 <- survfit(Surv(tempo, censura)~ritmo,
+                    data=df, subset=(ritmo==2 | ritmo==4))
+ekm_rit34 <- survfit(Surv(tempo, censura)~ritmo,
+                    data=df, subset=(ritmo==3 | ritmo==4))
+```
+
+```{r ritmo2a2, fig.align='center'}
+par(mfrow=c(2,3), mar=c(2,2,2,2))
+plot(ekm_rit12, main='1-2')
+plot(ekm_rit13, main='1-3')
+plot(ekm_rit14, main='1-4')
+plot(ekm_rit23, main='2-3')
+plot(ekm_rit24, main='2-4')
+plot(ekm_rit34, main='3-4')
+```
+
+Mais uma vez, não pode-se considerar um teste para a comparação das curvas "2 vs 3", mas pelo gráfico elas parecem razoavelmente diferentes.
+
+
+```{r ritmopair1}
+pairwise_survdiff(Surv(tempo, censura)~ritmo, data=df, rho=0)
+```
+
+Segundo o teste logrank acima, as comparações: "1 vs 3", "1 vs 4" e "2 vs 4" parecem diferentes, assim como vê-se nos gráficos.
+
+```{r ritmopair2}
+pairwise_survdiff(Surv(tempo, censura)~ritmo, data=df, rho=1)
+```
+
+Já segundo o teste de Wilcoxon acima, todas as comparações cabíveis parecem diferentes.
+
+
+### Covariáveis Binárias
+
+```{r covsBin, include=FALSE}
+ekm_sex <- survfit(Surv(tempo, censura)~sexo, data=df)
+ekm_frc <- survfit(Surv(tempo, censura)~frac, data=df)
+ekm_d1  <- survfit(Surv(tempo, censura)~droga1, data=df)
+ekm_d2  <- survfit(Surv(tempo, censura)~droga2, data=df)
+ekm_d3  <- survfit(Surv(tempo, censura)~droga3, data=df)
+
+g1 <- ggsurvplot(ekm_sex, data = df, break.time.by= 8,
+                 title='KM - Sexo do Paciente',
+                 xlab='Tempo (meses)', ylab='S(t)',
+                 legend.title='', censor.size=0.5,
+                 legend.labs=c('1:Masculino','2:Feminino'),
+                 font.x = c(9, 'plain', 'black'),
+                 font.y = c(9, 'plain', 'black'),
+                 font.tickslab = c(9, 'plain', 'black'),
+                 font.title = c(10, 'plain', 'black'),
+                 font.legend = c(7, 'plain', 'black')
+)
+g2 <- ggsurvplot(ekm_frc, data = df, break.time.by= 8,
+                 title='KM - Fração de Ejeção',
+                 xlab='Tempo (meses)', ylab='S(t)',
+                 legend.title='', censor.size=0.5,
+                 legend.labs=c('1:>=55%','2:<55%','3:NA'),
+                 font.x = c(9, 'plain', 'black'),
+                 font.y = c(9, 'plain', 'black'),
+                 font.tickslab = c(9, 'plain', 'black'),
+                 font.title = c(10, 'plain', 'black'),
+                 font.legend = c(7, 'plain', 'black')
+)
+g3 <- ggsurvplot(ekm_d1, data = df, break.time.by= 8,
+                 title='KM - Uso de Carvediol',
+                 xlab='Tempo (meses)', ylab='S(t)',
+                 legend.title='', censor.size=0.5,
+                 legend.labs=c('1:Tomou','0:Não Tomou'),
+                 font.x = c(9, 'plain', 'black'),
+                 font.y = c(9, 'plain', 'black'),
+                 font.tickslab = c(9, 'plain', 'black'),
+                 font.title = c(10, 'plain', 'black'),
+                 font.legend = c(7, 'plain', 'black')
+)
+g4 <- ggsurvplot(ekm_d2, data = df, break.time.by= 8,
+                 title='KM - Uso de Digoxina',
+                 xlab='Tempo (meses)', ylab='S(t)',
+                 legend.title='', censor.size=0.5,
+                 legend.labs=c('1:Tomou','0:Não Tomou'),
+                 font.x = c(9, 'plain', 'black'),
+                 font.y = c(9, 'plain', 'black'),
+                 font.tickslab = c(9, 'plain', 'black'),
+                 font.title = c(10, 'plain', 'black'),
+                 font.legend = c(7, 'plain', 'black')
+)
+g5 <- ggsurvplot(ekm_d3, data = df, break.time.by= 8,
+                 title='KM - Uso de Aspirina',
+                 xlab='Tempo (meses)', ylab='S(t)',
+                 legend.title='', censor.size=0.5,
+                 legend.labs=c('1:Tomou','0:Não Tomou'),
+                 font.x = c(9, 'plain', 'black'),
+                 font.y = c(9, 'plain', 'black'),
+                 font.tickslab = c(9, 'plain', 'black'),
+                 font.title = c(10, 'plain', 'black'),
+                 font.legend = c(7, 'plain', 'black')
+)
+```
+
+```{r covsBinG, fig.align='center'}
+grid.arrange(g3$plot, g4$plot, g5$plot, g2$plot, g1$plot, ncol=3)
+```
+
+Na verdade, a fração de ejeção não é uma covariável dicotômica, porém, a terceira categoria é apenas uma indicação de dados faltantes, então por isso, ela se encontra aqui. Além disso, veja que as curvas suas curvas (as relevantes) se cruzam muito, assim como para a droga_1, ou o uso de carvediol, por isso não será possível usar algum teste para comparação, ainda assim, em ambos os casos, as curvas parecem relativamente similares.
+Mas, para as demais covariáveis podemos usar o teste logrank normal, apenas para a droga_3, ou o uso de apirina, será preciso usar o teste de Wilcoxon.
+
+```{r binpair1}
+survdiff(Surv(tempo, censura)~droga2, data=df, rho=0)
+```
+
+```{r binpair2}
+survdiff(Surv(tempo, censura)~droga3, data=df, rho=1)
+```
+
+
+```{r binpair3}
+survdiff(Surv(tempo, censura)~sexo, data=df, rho=0)
+```
+
+Então, tem-se que as curvas para o uso de digoxina são estatísticamente diferentes, assim como as curvas de sobrevivência para o sexo, contudo, o uso ou não de aspirina por sua vez se mostrou irrelvante para a sobrevida do paciente.
+
+
+### Resumo da Análise Descritiva
+
+Portanto, após analisar cada covariável, tem-se que o uso ou não de carvediol e de aspirina não são relevantes para explicar o tempo de sobrevida dos pacientes, assim como a fração de ejeção, pois, segundo o gráfico comparando suas curvas, elas eram aproximadamente próximas.
+
+Além disso, viu-se que não existe diferenças entre as idades de 18 a 65 anos, portanto, será feita uma nova codificação desta variável: "0 - <= 65 anos" e "1 - >65 anos". Algo parecido pode ser feito com a covariável diagnóstico, pois não há diferenças significativas entre o paciente apresentar chagas ou alguma doença cardíaca hipertensiva, e também não há diferenças entre as curvas "outras doenças" e o diagnóstico de miocardiopatia isquêmica, desta forma, a nova codificação para o diagnóstico será: "0 - chagas ou doenças hipertensivas", "1 - miocardiopatia isquêmica e outras" (ou apenas outras) e "2 - insuficiência cardíaaca não especificada".
+Logo, a nova base de dados é dada por:
+
+```{r newDB}
+# Criando a nova base de dados a ser usada:
+dados <- df[, -c(7,9,11)]
+dados$Idade <- as.integer(dados$Idade)
+dados$diag <- as.integer(dados$diag)
+dados$Idade[dados$Idade==1 | dados$Idade==2] <- 0
+dados$Idade[dados$Idade==3 | dados$Idade==4] <- 0
+dados$Idade[dados$Idade==5] <- 1
+dados$Idade <- as.factor(dados$Idade)
+dados$diag[dados$diag==1 | dados$diag==2] <- 0
+dados$diag[dados$diag==3 | dados$diag==5] <- 1
+dados$diag[dados$diag==4] <- 2
+dados$diag <- as.factor(dados$diag)
+glimpse(dados)
+```
+
+As covariáveis contínuas ("Pressão arterial sistólica", "Taxa de triglicérides no sangue", "Índice de massa corpórea" e "Concentração de hemoglobina no sangue") serão analisadas quanto a sua relevância diretamente nas seções de modelagem.
+
+
+## b) Modelagem Paramétrica
+
+Nesta seção será feita a escolha do melhor modelo paramétrico para descrever o tempo até o óbito dos pacientes. Dessa forma, será utilizada a distribuição Gama Generalizada para a escolha das covariáveis significativas e, ao final, serão testadas as distribuições encaixadas: gama, log-normal, weibull e exponencial.
+
+Contudo, ante de começar de fato, considere o seguinte algoritmo em cinco passos para a escolha das covariáveis:
+
+*   Passo 1: testar a relevância de cada covariável em releção ao modelo nulo, sem covariáveis;
+*   Passo 2: ajustar um modelo com as covariáveis significativas do passo anterior e, uma por uma, retirar estas covariáveis e testar sua significância com o modelo 'maior' e o que não contém a covariável;
+*   Passo 3: ajustar um modelo com as covariáveis relevantes do passo anterior e verificar se as covariáveis que saíram do passo anterior são de fato não significativas em releção ao modelo 'menor';
+*   Passo 4: ajusta-se um modelo com as covariáveis que se mostraram significativas até agora e retorna-se com as covariáveis excluídas no passo 1 para confirmar que elas não são estatisticamente significativas; e
+*   Passo 5: por fim, incluí-se as eventuais covariáveis relevantes do passo 4 e repete-se o processo feito no passo 2, na tentativa de retirar alguma covariável.
+
+No caso, o teste considerado será o de razão de verossimilhança e o nível de significância será de 10%, ou seja, se o p-valor de um teste for menor que 0.1, então a covariável em questão é significativa e deve permanecer no modelo, do contrário, ela não é significativa e não há a necessidade de incluí-la no modelo.
+
+### Escolha do Melhor Modelo
+
+```{r p1, include=FALSE}
+attach(dados)
+# 1. Ajustar todos os modelos com uma cov.:
+fit0 <- flexsurvreg(Surv(tempo, censura)~1,
+                    data=dados, dist='gengamma')
+fit1 <- flexsurvreg(Surv(tempo, censura)~Idade,
+                    data=dados, dist='gengamma')
+fit2 <- flexsurvreg(Surv(tempo, censura)~sexo,
+                    data=dados, dist='gengamma')
+fit3 <- flexsurvreg(Surv(tempo, censura)~diag,
+                    data=dados, dist='gengamma')
+fit4 <- flexsurvreg(Surv(tempo, censura)~class,
+                    data=dados, dist='gengamma')
+fit5 <- flexsurvreg(Surv(tempo, censura)~ritmo,
+                    data=dados, dist='gengamma')
+fit6 <- flexsurvreg(Surv(tempo, censura)~droga2,
+                    data=dados, dist='gengamma')
+fit7 <- flexsurvreg(Surv(tempo, censura)~imc,
+                    data=dados, dist='gengamma')
+fit8 <- flexsurvreg(Surv(tempo, censura)~pas,
+                    data=dados, dist='gengamma')
+fit9 <- flexsurvreg(Surv(tempo, censura)~hb,
+                    data=dados, dist='gengamma')
+fit10 <- flexsurvreg(Surv(tempo, censura)~trigli,
+                    data=dados, dist='gengamma')
+
+aic = c(fit1$AIC, fit2$AIC, fit3$AIC, fit4$AIC, fit5$AIC,
+        fit6$AIC, fit7$AIC, fit8$AIC, fit9$AIC, fit10$AIC)
+
+Log_Lik = 2*c(fit1$loglik-fit0$loglik,
+              fit2$loglik-fit0$loglik,
+              fit3$loglik-fit0$loglik,
+              fit4$loglik-fit0$loglik,
+              fit5$loglik-fit0$loglik,
+              fit6$loglik-fit0$loglik,
+              fit7$loglik-fit0$loglik,
+              fit8$loglik-fit0$loglik,
+              fit9$loglik-fit0$loglik,
+              fit10$loglik-fit0$loglik
+              )
+```
+
+Então, o resultado do passo 1 é que a covariável sexo não é estatisticamente significante em releção ao modelo nulo.
+
+```{r r1}
+print(paste('Modelo Nulo:  -2*Log-Lik:',
+            round(-2*fit0$loglik, 3), ' AIC:', round(fit0$AIC,3)))
+data.frame(Cov = c("Idade", "sexo", "diag", "class", "ritmo",
+                   "droga2", "imc", "pas", "hb", "trigli" ),
+           AIC = round(aic, 4),
+           TRV = round(Log_Lik, 4),
+           p_valor = round(1-pchisq(Log_Lik, 1), 5)
+           )
+```
+
+```{r p2, include=FALSE}
+#2. Modelo com todas, menos uma a uma:
+fit0 <- flexsurvreg(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                         droga2+imc+pas+hb+trigli,
+                    data=dados, dist='gengamma')
+fit1 <- flexsurvreg(Surv(tempo, censura)~diag+class+ritmo+
+                                         droga2+imc+pas+hb+trigli,
+                    data=dados, dist='gengamma')
+fit2 <- flexsurvreg(Surv(tempo, censura)~Idade+class+ritmo+
+                                         droga2+imc+pas+hb+trigli,
+                    data=dados, dist='gengamma')
+fit3 <- flexsurvreg(Surv(tempo, censura)~Idade+diag+ritmo+
+                                         droga2+imc+pas+hb+trigli,
+                    data=dados, dist='gengamma')
+fit4 <- flexsurvreg(Surv(tempo, censura)~Idade+diag+class+
+                                         droga2+imc+pas+hb+trigli,
+                    data=dados, dist='gengamma')
+fit5 <- flexsurvreg(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                         imc+pas+hb+trigli,
+                    data=dados, dist='gengamma')
+fit6 <- flexsurvreg(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                         droga2+pas+hb+trigli,
+                    data=dados, dist='gengamma')
+fit7 <- flexsurvreg(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                         droga2+imc+hb+trigli,
+                    data=dados, dist='gengamma')
+fit8 <- flexsurvreg(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                         droga2+imc+pas+trigli,
+                    data=dados, dist='gengamma')
+fit9 <- flexsurvreg(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                         droga2+imc+pas+hb,
+                    data=dados, dist='gengamma')
+
+aic = c(fit1$AIC, fit2$AIC, fit3$AIC, fit4$AIC, fit5$AIC,
+        fit6$AIC, fit7$AIC, fit8$AIC, fit9$AIC)
+
+Log_Lik = 2*c(-fit1$loglik+fit0$loglik,
+              -fit2$loglik+fit0$loglik,
+              -fit3$loglik+fit0$loglik,
+              -fit4$loglik+fit0$loglik,
+              -fit5$loglik+fit0$loglik,
+              -fit6$loglik+fit0$loglik,
+              -fit7$loglik+fit0$loglik,
+              -fit8$loglik+fit0$loglik,
+              -fit9$loglik+fit0$loglik
+)
+```
+
+Já o resultado do passo 2 é: o índice de massa corporal é estatisticamente não relevante em relação ao modelo com todas as covariáveis relevantes do passo 1.
+
+```{r r2}
+print(paste('Modelo com Todas de 1.:  -2*Log-Lik:',
+            round(-2*fit0$loglik, 3), ' AIC:', round(fit0$AIC,3)))
+data.frame(Cov = c("-Idade", "-diag", "-class", "-ritmo",
+                   "-droga2", "-imc", "-pas", "-hb", "-trigli" ),
+           AIC = round(aic, 4),
+           TRV = round(Log_Lik, 4),
+           p_valor = round(1-pchisq(Log_Lik, 1), 5)
+)
+```
+
+Agora, veja que como apenas uma covariável foi não significativa no passo 2, então, este passo (3) se resume a testar novamente o modelo completo contra o modelo sem índice de massa corporal, e de fato, já sabe-se que ele é estatisticamente não significativo.
+
+```{r p4, include=FALSE}
+#4. com as cov's que sobraram até aqui, ajustar um modelo e testar se de fato
+# as cov's excluídas em 1. são n-sign.
+fit0 <- flexsurvreg(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                         droga2+pas+hb+trigli,
+                    data=dados, dist='gengamma')
+fit1 <- flexsurvreg(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                         droga2+pas+hb+trigli+sexo,
+                    data=dados, dist='gengamma')
+```
+
+Dessa vez, seguindo o passo 4, no teste de relevância da covariável 'sexo', ela se mostrou estatisticamente significativa, então será incluída no modelo.
+
+```{r r4}
+print(paste('Modelo com Todas de 3.:  -2*Log-Lik:',
+            round(-2*fit0$loglik, 3), ' AIC:', round(fit0$AIC,3)))
+print(paste("Incluir 'Sexo'?  AIC:", round(fit1$AIC,3),
+            ' TRV:', round(2*(fit1$loglik-fit0$loglik),3),
+            ' p-valor:', round(1-pchisq(2*(fit1$loglik-fit0$loglik), 1),3) ))
+```
+
+
+```{r p5, include=FALSE}
+#5. Idem 2.:
+fit0 <- flexsurvreg(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                         droga2+pas+hb+trigli+sexo,
+                    data=dados, dist='gengamma')
+fit1 <- flexsurvreg(Surv(tempo, censura)~diag+class+ritmo+
+                                         droga2+pas+hb+trigli+sexo,
+                    data=dados, dist='gengamma')
+fit2 <- flexsurvreg(Surv(tempo, censura)~Idade+class+ritmo+
+                                         droga2+pas+hb+trigli+sexo,
+                    data=dados, dist='gengamma')
+fit3 <- flexsurvreg(Surv(tempo, censura)~Idade+diag+ritmo+
+                                         droga2+pas+hb+trigli+sexo,
+                    data=dados, dist='gengamma')
+fit4 <- flexsurvreg(Surv(tempo, censura)~Idade+diag+class+
+                                         droga2+pas+hb+trigli+sexo,
+                    data=dados, dist='gengamma')
+fit5 <- flexsurvreg(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                         pas+hb+trigli+sexo,
+                    data=dados, dist='gengamma')
+fit6 <- flexsurvreg(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                         droga2+hb+trigli+sexo,
+                    data=dados, dist='gengamma')
+fit7 <- flexsurvreg(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                         droga2+pas+trigli+sexo,
+                    data=dados, dist='gengamma')
+fit8 <- flexsurvreg(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                         droga2+pas+hb+sexo,
+                    data=dados, dist='gengamma')
+fit9 <- flexsurvreg(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                         droga2+pas+hb+trigli,
+                    data=dados, dist='gengamma')
+
+aic = c(fit1$AIC, fit2$AIC, fit3$AIC, fit4$AIC, fit5$AIC,
+        fit6$AIC, fit7$AIC, fit8$AIC, fit9$AIC)
+
+Log_Lik = 2*c(-fit1$loglik+fit0$loglik,
+              -fit2$loglik+fit0$loglik,
+              -fit3$loglik+fit0$loglik,
+              -fit4$loglik+fit0$loglik,
+              -fit5$loglik+fit0$loglik,
+              -fit6$loglik+fit0$loglik,
+              -fit7$loglik+fit0$loglik,
+              -fit8$loglik+fit0$loglik,
+              -fit9$loglik+fit0$loglik
+)
+```
+
+Por fim, todas as covariáveis até aqui se mostraram relevantes no passo 5 e nenhuma será retirada do modelo final.
+
+```{r r5}
+print(paste('Modelo com Todas de 4.:  -2*Log-Lik:',
+            round(-2*fit0$loglik, 3), ' AIC:', round(fit0$AIC,3)))
+data.frame(Cov = c("-Idade", "-diag", "-class", "-ritmo",
+                   "-droga2", "-pas", "-hb", "-trigli", "-sexo"),
+           AIC = round(aic, 4),
+           TRV = round(Log_Lik, 4),
+           p_valor = round(1-pchisq(Log_Lik, 1), 5)
+)
+```
+
+```{r pfinal, include=FALSE}
+# Modelo final:
+fit_gg <- flexsurvreg(Surv(tempo, censura)~Idade+sexo+pas+class+hb+
+                                           diag+trigli+ritmo+droga2,
+                      data=dados, dist='gengamma')
+
+fit_gm <- flexsurvreg(Surv(tempo, censura)~Idade+sexo+pas+class+hb+
+                                           diag+trigli+ritmo+droga2,
+                      data=dados, dist='gamma')
+
+fit_ln <- flexsurvreg(Surv(tempo, censura)~Idade+sexo+pas+class+hb+
+                                           diag+trigli+ritmo+droga2,
+                      data=dados, dist='lognorm')
+
+fit_wb <- flexsurvreg(Surv(tempo, censura)~Idade+sexo+pas+class+hb+
+                                           diag+trigli+ritmo+droga2,
+                      data=dados, dist='weibull')
+
+fit_ex <- flexsurvreg(Surv(tempo, censura)~Idade+sexo+pas+class+hb+
+                                           diag+trigli+ritmo+droga2,
+                      data=dados, dist='exp')
+
+log_lik = 2*c(fit_gg$loglik - fit_gm$loglik,
+              fit_gg$loglik - fit_ln$loglik,
+              -fit_gg$loglik +fit_wb$loglik,
+              fit_gg$loglik - fit_ex$loglik)
+```
+
+Agora, fazendo os testes para verificar qual distribuição é adequada aos dados, vê-se que tanto a distribuição de Weibull quanto a Gama são aceitáveis, porém, segundo o critério de Akaike, o modelo com a distribuição de Weibull é um pouco melhor, além de ser mais natural do que o com a distribuição Gama.
+
+```{r rfinal}
+print(paste('Gama-Gen:  -2*Log-Lik =', round(-2*fit_gg$loglik,3),
+            ' e AIC =', round(fit_gg$AIC,2)))
+
+data.frame(Modelo = c('Gama', 'Log-Norm', 'Weibull', 'Exp'),
+           log_Lik = round(-2*c(fit_gm$loglik, fit_ln$loglik,
+                                fit_wb$loglik, fit_ex$loglik), 2),
+           AIC = round(c(fit_gm$AIC, fit_ln$AIC, fit_wb$AIC, fit_ex$AIC),1),
+           TRV = round(log_lik, 3),
+           p_valor = round( c(1-pchisq(log_lik[1:3],1), 
+                              1-pchisq(log_lik[4],  2)),  3)
+)
+```
+Portanto, o modelo final pode ser conferido abaixo:
+
+```{r modF}
+final <- survreg(Surv(tempo, censura)~Idade+sexo+pas+class+hb+
+                                      diag+trigli+ritmo+droga2,
+                 data=dados, dist='weibull')
+summary(final)
+```
+
+Ou seja, para $T$ o tempo até o óbito do paciente e $X_1, X_2, X_3, X_4, X_5, X_6, X_7, X_8, X_9, X_{10}, X_{11}$ e $X_{12}$ sendo respectivamente as covariáveis "Idade", "Sexo", "Pressão Arterial", "Classe Funcional - LEM", "Classe Funcional - LR", "Classe Funcional - NA", "Concentração de Hemoglobina", "Diagnóstico - Outros", "Diagnóstico - Miocardiopatia", "Taxa de Triglicérides", "Ritmo - Dados Faltantes" e "Droga2", têm-se a seguinte função de sobrevivência:
+
+$$S(T|\textbf{X}) = exp\Bigg(\Big(\frac{t}{exp(\mu_{\textbf{X}})}\Big)^{\frac{1}{0.66}}\Bigg)$$
+em que $\mu_{\textbf{X}} = 2.44 - 0.28X_1 + 0.28X_2 + 0.01X_3 - 0.30X_4 - 0.35X_5 - 0.62X_6 + 0.09X_7 + 0.37X_8 + 0.28X_9 + 0.002X_{10} + 0.73X_{11} - 0.23X_{12}$.
+
+Então, por exemplo, se um paciente tiver mais de 65 anos, a probabilidade dele sobreviver é 28% menor do que pacientes com menos de 65 anos. Se o paciente for do sexo feminino, então sua probabilidade de sobrevivência é 28% maior em relação aos pacientes masculinos. E o mesmo pode ser interpretado a partir de "pressão arterial", "concentração de hemoglobinas", "taxa de triglicérides" e "droga2".
+
+Por outro lado, para a classe funcional tem-se a comparação de cada categoria com a uma específica, no caso, "sem sintomas". Isto é, pacientes cuja classe funcional for "não referido" tem 62% menos probabilidade de sobreviverem do que pacientes que sem sintomas. E esta interpretação também se aplica para o diagnóstico (cuja categoria específica é "chagas ou doença hipertensiva") e o ritmo (cuja categoria específica é "sinusal").
+
+
+### Análise os resíduos
+
+Para terminar esta seção, serão analisados os resíduos de Cox-Snell, de Martingal e deviance para o modelo final.
+
+```{r resCS, fig.align='center'}
+# residuos cox-snell:
+mu <- final$linear.predictors
+SW <- exp(-(tempo*exp(-mu))^(1/final$scale))
+eW <- -log(SW)
+eKMW <- survfit(Surv(eW, censura)~1, se.fit=FALSE, data=dados)
+
+par(mfrow=c(1,2))
+plot(exp(-eKMW$time), eKMW$surv, xlab="S(e) - Exponencial",
+     ylab="S(e) - Kaplan-Meier",lwd=1, main="Weibull", pch=16)
+plot(eKMW, ylab="S(e)", xlab="Residuo-Cox-Snell", lty=1,
+     lwd=2,main="Weibull")
+curve(exp(-x), 0, max(eKMW$time), add=T, lwd=2, lty=2)
+legend(1.1, 1, c("KM","Exp"), bty="n", lty=1:2)
+```
+
+Logo, segundo os residuos de cox-snell, de modo geral, a distribuição de Weibull é adequada para descrever o tempo até o óbito dos pacientes, para os referidos dados.
+
+```{r resM1, fig.align='center'}
+# residuos martingal:
+m = dados$censura - eW
+
+par(mfrow=c(1,3))
+plot(dados$pas, m, ylab='martingal',
+     xlab='Pressão Arterial', pch=16)
+plot(dados$hb, m, ylab='martingal', pch=16,
+     xlab='Concentração Hemoglobina')
+plot(dados$trigli, m, ylab='martingal',
+     xlab='Taxa de Triglicérides', pch=16)
+```
+
+Já segundo os resíduos de martingal, vê-se que aparentemente não há tendências na pressão arterial e na concentração de hemoglobina, porém talvez haja na taxa de triglicérides; considere uma tranformação logarítma:
+
+```{r resM2, fig.align='center'}
+par(mfrow=c(1,2))
+plot(dados$trigli, m, ylab='martingal',
+     xlab='Taxa de Triglicérides', pch=16)
+plot(log(dados$trigli), m, ylab='martingal',
+     xlab='log(Taxa de Triglicérides)', pch=16)
+```
+
+De fato, os resíduos deixaram de apresentar a tendência após a transformação. Então, considere o modelo com o logarítmo da taxa de triglicérides a seguir (na verdade, ele é essencialmente o mesmo).
+
+```{r modF2}
+final <- survreg(Surv(tempo, censura)~Idade+sexo+pas+class+ritmo+
+                   diag+log(trigli)+hb+droga2,
+                 data=dados, dist='weibull')
+summary(final)
+```
+
+```{r resD, fig.align='center'}
+# residuos deviance:
+mu <- final$linear.predictors
+SW <- exp(-(tempo*exp(-mu))^(1/final$scale))
+eW <- -log(SW)
+m = dados$censura - eW
+aux <- m + dados$censura*log(dados$censura - m)
+d = (m/abs(m))*sqrt(-2*aux)
+
+par(mfrow=c(1,3))
+plot(dados$pas, d, ylab='deviance',
+     xlab='Pressão Arterial', pch=16)
+plot(dados$hb, d, ylab='deviance', pch=16,
+     xlab='Concentração Hemoglobina')
+plot(log(dados$trigli), d, ylab='deviance',
+     xlab='log(Taxa de Triglicérides)', pch=16)
+```
+
+Por último, os gráficos dos resíduos deviance também não apontam a presença de _outliers_. Portanto, o modelo paramétrico é de fato adequado aos dados.
+
+
+## c) Modelagem Semi-Paramétrica
+
+Agora, nesta última parte será feita a escolha do melhor modelo semi-paramétrico para descrever o tempo até o óbito dos pacientes. Para isto, será novamente considerado o algoritmo em cinco passos da seção anterior para a escolha das covariáveis significativas, o teste de razão de verossimilhança e o nível de 10% de significância.
+
+### Escolha do Melhor Modelo
+
+```{r cx1, include=FALSE}
+# 1. Ajustar todos os modelos com uma cov.:
+cox0 <- coxph(Surv(tempo, censura)~1, x=T,
+              data=dados, method='breslow')
+cox1 <- coxph(Surv(tempo, censura)~Idade, x=T,
+              data=dados, method='breslow')
+cox2 <- coxph(Surv(tempo, censura)~sexo, x=T,
+              data=dados, method='breslow')
+cox3 <- coxph(Surv(tempo, censura)~diag, x=T,
+              data=dados, method='breslow')
+cox4 <- coxph(Surv(tempo, censura)~class, x=T,
+              data=dados, method='breslow')
+cox5 <- coxph(Surv(tempo, censura)~ritmo, x=T,
+              data=dados, method='breslow')
+cox6 <- coxph(Surv(tempo, censura)~droga2, x=T,
+              data=dados, method='breslow')
+cox7 <- coxph(Surv(tempo, censura)~imc, x=T,
+              data=dados, method='breslow')
+cox8 <- coxph(Surv(tempo, censura)~pas, x=T,
+              data=dados, method='breslow')
+cox9 <- coxph(Surv(tempo, censura)~hb, x=T,
+              data=dados, method='breslow')
+cox10 <- coxph(Surv(tempo, censura)~trigli, x=T,
+               data=dados, method='breslow')
+
+Log_Lik = 2*c(cox1$loglik[2]-cox0$loglik,
+              cox2$loglik[2]-cox0$loglik,
+              cox3$loglik[2]-cox0$loglik,
+              cox4$loglik[2]-cox0$loglik,
+              cox5$loglik[2]-cox0$loglik,
+              cox6$loglik[2]-cox0$loglik,
+              cox7$loglik[2]-cox0$loglik,
+              cox8$loglik[2]-cox0$loglik,
+              cox9$loglik[2]-cox0$loglik,
+              cox10$loglik[2]-cox0$loglik
+)
+```
+
+Então, o resultado do passo 1 é que a covariável sexo não é estatisticamente significante em releção ao modelo nulo.
+
+```{r rcx1}
+print( paste('Modelo Nulo:  -2*Log-Lik:', round(-2*cox0$loglik, 3)))
+
+data.frame(Cov = c("Idade", "sexo", "diag", "class", "ritmo",
+                   "droga2", "imc", "pas", "hb", "trigli" ),
+           TRV = round(Log_Lik, 4),
+           p_valor = round(1-pchisq(Log_Lik, 1), 5)
+)
+```
+
+
+```{r cx2, include=FALSE}
+#2. Modelo com todas, menos uma a uma:
+cox0 <- coxph(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                   droga2+imc+pas+hb+trigli,
+              data=dados, x=T, method='breslow')
+cox1<- coxph(Surv(tempo, censura)~diag+class+ritmo+
+                                  droga2+imc+pas+hb+trigli,
+             data=dados, x=T, method='breslow')
+cox2 <- coxph(Surv(tempo, censura)~Idade+class+ritmo+
+                                   droga2+imc+pas+hb+trigli,
+             data=dados, x=T, method='breslow')
+cox3 <- coxph(Surv(tempo, censura)~Idade+diag+ritmo+
+                                   droga2+imc+pas+hb+trigli,
+              data=dados, x=T, method='breslow')
+cox4 <- coxph(Surv(tempo, censura)~Idade+diag+class+
+                                   droga2+imc+pas+hb+trigli,
+              data=dados, x=T, method='breslow')
+cox5 <- coxph(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                   imc+pas+hb+trigli,
+              data=dados, x=T, method='breslow')
+cox6 <- coxph(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                   droga2+pas+hb+trigli,
+              data=dados, x=T, method='breslow')
+cox7 <- coxph(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                   droga2+imc+hb+trigli,
+              data=dados, x=T, method='breslow')
+cox8 <- coxph(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                   droga2+imc+pas+trigli,
+              data=dados, x=T, method='breslow')
+cox9 <- coxph(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                   droga2+imc+pas+hb,
+              data=dados, x=T, method='breslow')
+
+Log_Lik = 2*c(-cox1$loglik[2] + cox0$loglik[2],
+              -cox2$loglik[2] + cox0$loglik[2],
+              -cox3$loglik[2] + cox0$loglik[2],
+              -cox4$loglik[2] + cox0$loglik[2],
+              -cox5$loglik[2] + cox0$loglik[2],
+              -cox6$loglik[2] + cox0$loglik[2],
+              -cox7$loglik[2] + cox0$loglik[2],
+              -cox8$loglik[2] + cox0$loglik[2],
+              -cox9$loglik[2] + cox0$loglik[2]
+)
+```
+
+Já o resultado do passo 2 é: o índice de massa corporal é estatisticamente não relevante em relação ao modelo com todas as covariáveis relevantes do passo 1.
+
+```{r rcx2}
+print(paste('Modelo com Todas de 1.:  -2*Log-Lik:',
+            round(-2*cox0$loglik[2], 3)))
+data.frame(Cov = c("-Idade", "-diag", "-class", "-ritmo",
+                   "-droga2", "-imc", "-pas", "-hb", "-trigli" ),
+           TRV = round(Log_Lik, 4),
+           p_valor = round(1-pchisq(Log_Lik, 1), 5)
+)
+```
+
+Novamente, veja que como apenas uma covariável foi não significativa no passo 2, então, este passo (3) se resume a testar novamente o modelo completo contra o modelo sem índice de massa corporal, e de fato, já sabe-se que ele é estatisticamente não significativo.
+
+
+```{r cx4, include=FALSE}
+#4. com as cov's que sobraram até aqui, ajustar um modelo e testar se de fato
+# as cov's excluídas em 1. são n-sign.
+cox0 <- coxph(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                   droga2+pas+hb+trigli,
+              data=dados, x=T, method='breslow')
+cox1 <- coxph(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                   droga2+pas+hb+trigli+sexo,
+              data=dados, x=T, method='breslow')
+```
+
+Dessa vez, seguindo o passo 4, no teste de relevância da covariável 'sexo', ela se mostrou estatisticamente significativa, então será incluída no modelo.
+
+```{r rcx4}
+print(paste('Modelo com Todas de 3.:  -2*Log-Lik:',
+            round(-2*cox0$loglik[2], 3)))
+print(paste("Incluir 'Sexo'? TRV:",
+            round(2*(cox1$loglik[2]-cox0$loglik[2]), 3),
+            ' p-valor:',
+            round(1-pchisq(2*(cox1$loglik[2]-cox0$loglik[2]), 1),3) ))
+```
+
+
+```{r cx5, include=FALSE}
+#5. Idem 2.:
+cox0 <- coxph(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                   droga2+pas+hb+trigli+sexo,
+                    data=dados, x=T, method='breslow')
+cox1 <- coxph(Surv(tempo, censura)~diag+class+ritmo+
+                                   droga2+pas+hb+trigli+sexo,
+              data=dados, x=T, method='breslow')
+cox2 <- coxph(Surv(tempo, censura)~Idade+class+ritmo+
+                                   droga2+pas+hb+trigli+sexo,
+              data=dados, x=T, method='breslow')
+cox3 <- coxph(Surv(tempo, censura)~Idade+diag+ritmo+
+                                   droga2+pas+hb+trigli+sexo,
+              data=dados, x=T, method='breslow')
+cox4 <- coxph(Surv(tempo, censura)~Idade+diag+class+
+                                   droga2+pas+hb+trigli+sexo,
+              data=dados, x=T, method='breslow')
+cox5 <- coxph(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                   pas+hb+trigli+sexo,
+              data=dados, x=T, method='breslow')
+cox6 <- coxph(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                   droga2+hb+trigli+sexo,
+              data=dados, x=T, method='breslow')
+cox7 <- coxph(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                   droga2+pas+trigli+sexo,
+              data=dados, x=T, method='breslow')
+cox8 <- coxph(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                   droga2+pas+hb+sexo,
+              data=dados, x=T, method='breslow')
+cox9 <- coxph(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                   droga2+pas+hb+trigli,
+              data=dados, x=T, method='breslow')
+
+Log_Lik = 2*c(-cox1$loglik[2] +cox0$loglik[2],
+              -cox2$loglik[2] +cox0$loglik[2],
+              -cox3$loglik[2] +cox0$loglik[2],
+              -cox4$loglik[2] +cox0$loglik[2],
+              -cox5$loglik[2] +cox0$loglik[2],
+              -cox6$loglik[2] +cox0$loglik[2],
+              -cox7$loglik[2] +cox0$loglik[2],
+              -cox8$loglik[2] +cox0$loglik[2],
+              -cox9$loglik[2] +cox0$loglik[2]
+)
+```
+
+Por fim, todas as covariáveis até aqui se mostraram relevantes no passo 5 e nenhuma será retirada do modelo final.
+
+```{r rcx5}
+print(paste('Modelo com Todas de 4.:  -2*Log-Lik:',
+            round(-2*cox0$loglik[2], 3)))
+data.frame(Cov = c("-Idade", "-diag", "-class", "-ritmo",
+                   "-droga2", "-pas", "-hb", "-trigli", "-sexo"),
+           TRV = round(Log_Lik, 4),
+           p_valor = round(1-pchisq(Log_Lik, 1), 5)
+)
+```
+
+Logo, o modelo final pode ser conferido abaixo:
+
+```{r coxF}
+final <- coxph(Surv(tempo, censura)~Idade+diag+class+ritmo+
+                                    droga2+pas+hb+trigli+sexo,
+               data=dados, x=T, method='breslow')
+summary(final)
+```
+
+Ou seja, têm-se as seguinte funções de taxa de risco, risco acumalado e sobrevivência:
+
+$$h(T|\textbf{X}) = h_0(t)exp(\mu_{\textbf{X}})$$
+
+$$H(T|\textbf{X}) = \int_0^t h(u|\textbf{X})du = H_0(T)exp(\mu_{\textbf{X}})$$
+
+$$S(T|\textbf{X}) = exp(-H(T|\textbf{X})) = S_0(t)^{exp(\mu_{\textbf{X}})}$$
+
+em que $\mu_{\textbf{X}}$ é a soma das multiplicações de cada covariável significativa pelo seu coeficiente da tabela e $S_0(t)$ é a função de sobrevivência base, estimada pelo método não paramétrico de Nelson-Aalen.
+
+Contudo, a interpretação dos coeficientes se dá pelas razões de risco, isto é, o quanto certa categoria da covariável aumenta (ou diminui) a taxa "instantânea" de óbito do paciente para um mês qualquer em comparação com alguma categoria fixa.
+
+Por exemplo, pacientes com mais de 65 anos apresentam uma taxa de mortalidade 52% maior; com diagnóstico 'outros' apresentam taxa 43% menor em comparação com os diagnosticados com chagas ou doenças hipertensivas; se a classe funcional for 'LEM' e 'LR' então as taxas são 55% e 71% maiores em comparação com a classe 'SS'; e assim por diante para as demais covariáveis.
+
+
+### Análise dos Resíduos
+
+Por fim, será feito os teste de proporcionalidade para as covariáveis e os resíduos escalos de Schoenfeld serão analisados. Começando com os testes:
+
+```{r propc}
+# teste de proporcionalidade:
+aux <- cox.zph(final, terms=FALSE)
+aux
+```
+
+Fixado o nível de 10% de significância, segundo os testes acima, apenas para a covariável "diagnóstico - outros" rejeita-se a hipótese de riscos proporcionais e ela deveria ser retirada do modelo. Mas de modo geral, o modelo parece satisfazer a condição de riscos proporcionais.
+
+```{r res, message=FALSE, warning=FALSE, fig.align='center'}
+ggcoxdiagnostics(final, type = "scaledsch",
+                 linear.predictions = F,
+                 ggtheme = theme_bw())
+```
+
+E, na verdade, os gráficos acima reforçam a ideia de que os riscos são de fato proporcionais, pois não há tendências de inclinação para a dispersão dos resíduos das covariáveis.
+
+Portanto, de forma geral, o modelo final semi-paramétrico de Cox também é adequado aos dados.
