@@ -3,10 +3,10 @@ title: "SME0821 - Análise de Sobrevivência e Confiabilidade"
 output: pdf_document
 ---
 
-### Nome: Juan Lucas Montanaro
+### Nome: Juan Lucas Montanaro, nºUSP: 11912787
 ### 19 de Julho de 2022
 
-# Trabalho
+# Trabalho Final
 
 ## Sumário
 *  Análise Descritiva dos Dados
